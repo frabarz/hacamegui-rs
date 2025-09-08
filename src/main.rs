@@ -6,6 +6,7 @@ extern crate log;
 mod renderer;
 mod decoder;
 mod util;
+mod cam;
 
 use eframe::egui;
 use anyhow::Result;
@@ -29,7 +30,7 @@ async fn main() -> Result<()> {
     })?;
 
     let (vid_tx, vid_rx) = std::sync::mpsc::sync_channel::<hacam_lib_rs::cam::LiveViewFrame>(3);
-    let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel::<renderer::CamFrame>(3);
+    let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel::<crate::cam::CamFrame>(3);
 
     tokio::task::spawn(async move {
         let mut cam = hacam_lib_rs::cam::HaCam::new().unwrap();

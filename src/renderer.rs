@@ -9,18 +9,13 @@ use std::{f32::consts::FRAC_PI_2, sync::mpsc::Receiver};
 use std::mem;
 use wgpu::util::DeviceExt;
 
+use crate::cam::CamFrame;
+
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
 struct CameraUniform {
     inv_proj: [[f32; 4]; 4],
     inv_view: [[f32; 4]; 4],
-}
-
-#[derive(Clone)]
-pub struct CamFrame {
-    pub frame: Vec<u8>,
-    pub width: usize,
-    pub height: usize,
 }
 
 pub struct AppState {

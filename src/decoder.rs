@@ -8,7 +8,7 @@ use anyhow::Result;
 use openh264::formats::YUVSource;
 use yuv::{yuv420_to_bgra, YuvPlanarImage, YuvRange, YuvStandardMatrix};
 use hacam_lib_rs::{cam::LiveViewFrame};
-use crate::renderer::CamFrame;
+use crate::cam::CamFrame;
 
 pub fn run_cam_lv(vid_rx: Receiver<LiveViewFrame>, frame_tx: SyncSender<CamFrame>) -> Result<()> {
     let mut decoder = openh264::decoder::Decoder::new()?;
