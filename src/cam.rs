@@ -83,19 +83,21 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
 
     while let Some(in_msg) = rx.recv().await {
         if let CamInMessage::Init = in_msg {
-            let cam_inst = match HaCam::new() {
-                Ok(cam_inst) => cam_inst,
-                Err(e) => {
-                    tx.send(CamOutMessage::Error(Ok(e))).await?;
-                    continue;
-                }
-            };
+            if !cam.initialized() {
+                let cam_inst = match HaCam::new() {
+                    Ok(cam_inst) => cam_inst,
+                    Err(e) => {
+                        tx.send(CamOutMessage::Error(Ok(e))).await?;
+                        continue;
+                    }
+                };
 
-            if cam.set(cam_inst).is_err() {
-                tx.send(CamOutMessage::Error(Err(
-                    "Camera cannot be initialized twice!".to_owned(),
-                )))
-                .await?;
+                if cam.set(cam_inst).is_err() {
+                    tx.send(CamOutMessage::Error(Err(
+                        "Camera cannot be initialized twice!".to_owned(),
+                    )))
+                    .await?;
+                }
             }
 
             let Some(cam) = cam.get_mut() else {
@@ -146,13 +148,15 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
                 cam.start_recording().await?;
 
                 let rec_req = cam.check_start_recording_request().await?;
-                tx.send(CamOutMessage::StartRecordingStatus(rec_req, video_res)).await?;
+                tx.send(CamOutMessage::StartRecordingStatus(rec_req, video_res))
+                    .await?;
             }
             CamInMessage::StopRecording => {
                 cam.stop_recording().await?;
 
                 let stop_rec_req = cam.check_start_recording_request().await?;
-                tx.send(CamOutMessage::StopRecordingStatus(stop_rec_req)).await?;
+                tx.send(CamOutMessage::StopRecordingStatus(stop_rec_req))
+                    .await?;
             }
             CamInMessage::TakePhoto { orientation } => {
                 let on_thumbnail = |thumb| {
@@ -180,7 +184,8 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
                 let photo_res = PhotoResolution::try_from(
                     cam.read_setting(settings::SettingType::PhotoResolution)
                         .await? as i8,
-                ).unwrap();
+                )
+                .unwrap();
 
                 let photo = cam
                     .take_picture_and_get(

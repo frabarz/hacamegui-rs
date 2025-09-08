@@ -138,7 +138,7 @@ fn main() -> Result<()> {
         })?;
 
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([650.0, 650.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([750.0, 750.0]),
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
