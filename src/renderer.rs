@@ -5,11 +5,12 @@ use eframe::{
 
 use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
+use tokio::sync::mpsc::Sender;
+use std::{mem};
 use std::{f32::consts::FRAC_PI_2, sync::mpsc::Receiver};
-use std::mem;
 use wgpu::util::DeviceExt;
 
-use crate::cam::CamFrame;
+use crate::cam::{CamFrame, CamInMessage, CamOutMessage};
 
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
@@ -24,8 +25,9 @@ pub struct AppState {
     yaw: f32,
     pitch: f32,
     zoom: f32,
-    rx: Receiver<CamFrame>,
+    cam_frame_rx: Receiver<CamFrame>,
     placeholder_frame: Option<CamFrame>,
+    cam_in_tx: Sender<CamInMessage>
 }
 
 impl AppState {
@@ -34,6 +36,7 @@ impl AppState {
         width: u32,
         height: u32,
         rx: Receiver<CamFrame>,
+        cam_in_tx: Sender<CamInMessage>
     ) -> Self {
         let wgpu_render_state = cc.wgpu_render_state.as_ref().unwrap();
 
@@ -143,8 +146,9 @@ impl AppState {
             zoom: 1.0,
             width,
             height,
-            rx,
+            cam_frame_rx: rx,
             placeholder_frame: None,
+            cam_in_tx
         }
     }
 
@@ -205,9 +209,21 @@ impl eframe::App for AppState {
             });
             ui.label("CTRL+SCROLL to zoom.");
 
-            egui::Frame::canvas(ui.style()).show(ui, |ui| {
-                self.custom_painting(ui, self.rx.try_recv().ok(), None);
+            ui.horizontal(|ui| {
+                if ui.button("Open camera").clicked() {
+                    self.cam_in_tx.blocking_send(CamInMessage::Init).unwrap();
+                }
+
+                if ui.button("Power off camera").clicked() {
+                    self.cam_in_tx.blocking_send(CamInMessage::PowerOff).unwrap();
+                }
             });
+
+            ui.vertical_centered_justified(|ui| {
+                egui::Frame::canvas(ui.style()).show(ui, |ui| {
+                    self.custom_painting(ui, self.cam_frame_rx.try_recv().ok(), None);
+                });
+            })
         });
     }
 }

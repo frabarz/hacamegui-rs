@@ -3,23 +3,20 @@
 #[macro_use]
 extern crate log;
 
-mod renderer;
-mod decoder;
-mod util;
 mod cam;
+mod decoder;
+mod renderer;
+mod util;
 
-use eframe::egui;
 use anyhow::Result;
-use std::{
-    time::Duration,
-};
+use eframe::egui;
 use hacam_lib_rs::settings::LiveViewResolution;
+use std::time::Duration;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc; // Much faster allocator, can give 20% speedups: https://github.com/emilk/egui/pull/7029
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     lovely_env_logger::try_init(lovely_env_logger::Config {
         with_system_timestamp: true,
         reltime: false,
@@ -29,10 +26,21 @@ async fn main() -> Result<()> {
         with_padding: false,
     })?;
 
+    let (cam_in_tx, cam_in_rx) = tokio::sync::mpsc::channel::<cam::CamInMessage>(16);
+    let (cam_out_tx, cam_out_rx) = tokio::sync::mpsc::channel::<cam::CamOutMessage>(16);
+
     let (vid_tx, vid_rx) = std::sync::mpsc::sync_channel::<hacam_lib_rs::cam::LiveViewFrame>(3);
     let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel::<crate::cam::CamFrame>(3);
 
+    let rt = tokio::runtime::Runtime::new()?;
+
+    rt.spawn(async move {
+        cam::cam_worker(cam_in_rx, cam_out_tx).await.unwrap();
+    });
+
+    /*
     tokio::task::spawn(async move {
+        /*
         let mut cam = hacam_lib_rs::cam::HaCam::new().unwrap();
 
         cam.initialize_comm().await.unwrap();
@@ -45,9 +53,11 @@ async fn main() -> Result<()> {
         while let Ok((_, frame)) = cam.get_live_view_frame().await {
             vid_tx.send(frame).unwrap();
         }
+        */
 
         anyhow::Ok(())
     });
+    */
 
     std::thread::Builder::new()
         .name("frame-decoder-thread".to_string())
@@ -56,7 +66,7 @@ async fn main() -> Result<()> {
         })?;
 
     let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default().with_inner_size([850.0, 850.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([650.0, 650.0]),
         renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
@@ -64,7 +74,11 @@ async fn main() -> Result<()> {
     eframe::run_native(
         "Huawei 360° Camera GUI",
         options,
-        Box::new(|cc| Ok(Box::new(renderer::AppState::new(cc, 850, 850, frame_rx)))),
+        Box::new(|cc| {
+            Ok(Box::new(renderer::AppState::new(
+                cc, 650, 650, frame_rx, cam_in_tx,
+            )))
+        }),
     )
     .unwrap();
 

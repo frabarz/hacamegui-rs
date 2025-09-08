@@ -32,9 +32,9 @@ pub enum CamInMessage {
         orientation: PictureOrientation,
     },
 
-    //Reinit,
-    //Keepalive,
     GetFrame,
+
+    PowerOff,
 
     WriteSetting {
         typ: settings::SettingType,
@@ -174,6 +174,10 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
                     thermal_status: Some(thermal_status),
                 })
                 .await?;
+            }
+
+            CamInMessage::PowerOff => { 
+                cam.power_off().await?;
             }
 
             CamInMessage::ReadSetting { typ } => {
