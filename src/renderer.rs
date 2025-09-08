@@ -20,6 +20,8 @@ struct CameraUniform {
 }
 
 pub struct AppState {
+    is_live_view_on: bool,
+
     width: u32,
     height: u32,
     yaw: f32,
@@ -141,6 +143,7 @@ impl AppState {
             });
 
         Self {
+            is_live_view_on: false,
             yaw: 0.0,
             pitch: 0.0,
             zoom: 1.0,
@@ -200,8 +203,10 @@ impl eframe::App for AppState {
         // we can only request a repaint each time a frame is decoded.
         ctx.request_repaint();
 
-        self.cam_in_tx.blocking_send(CamInMessage::GetFrame).unwrap();
-
+        if self.is_live_view_on {
+            self.cam_in_tx.blocking_send(CamInMessage::GetFrame).unwrap();
+        }
+        
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 //ui.spacing_mut().item_spacing.x = 0.0;
@@ -218,10 +223,12 @@ impl eframe::App for AppState {
 
                 if ui.button("Start live view").clicked() {
                     self.cam_in_tx.blocking_send(CamInMessage::StartLiveView(hacam_lib_rs::settings::LiveViewResolution::Low)).unwrap();
+                    self.is_live_view_on = true;
                 }
 
                 if ui.button("Stop live view").clicked() {
                     self.cam_in_tx.blocking_send(CamInMessage::StopLiveView).unwrap();
+                    self.is_live_view_on = false;
                 }
 
                 if ui.button("Power off camera").clicked() {
