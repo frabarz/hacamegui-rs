@@ -21,6 +21,7 @@ yuv = "0.8.6"
 openh264 = "0.8.1"
 minimp4 = "0.1.2"
 rfd = "0.15.4"
+image = { version = "0.25.8", features = ["jpeg"] }
 
 [profile.release]
 debug = true

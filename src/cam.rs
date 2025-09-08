@@ -42,6 +42,8 @@ pub enum CamInMessage {
 
     PowerOff,
 
+    Keepalive,
+
     WriteSetting {
         typ: settings::SettingType,
         value: u8,
@@ -110,6 +112,10 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
 
             cam.initialize_comm().await?;
 
+            continue;
+        }
+
+        if !cam.initialized() && let CamInMessage::Keepalive = in_msg {
             continue;
         }
 
@@ -222,6 +228,10 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
                     thermal_status: Some(thermal_status),
                 })
                 .await?;
+            }
+
+            CamInMessage::Keepalive => {
+                cam.send_keepalive().await?;
             }
 
             CamInMessage::PowerOff => {

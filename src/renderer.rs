@@ -207,6 +207,10 @@ impl eframe::App for AppState {
             self.cam_in_tx
                 .blocking_send(CamInMessage::GetFrame)
                 .unwrap();
+        } else if ctx.cumulative_frame_nr().is_multiple_of(60) {
+            self.cam_in_tx
+                .blocking_send(CamInMessage::Keepalive)
+                .unwrap();
         }
 
         egui::CentralPanel::default().show(ctx, |ui| {
