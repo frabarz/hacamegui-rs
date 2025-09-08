@@ -44,9 +44,21 @@ fn main() -> Result<()> {
         while let Some(msg) = cam_out_rx.recv().await {
             match msg {
                 cam::CamOutMessage::Info(i) => info!("Received info from cam: {i}"),
-                cam::CamOutMessage::Frame { frame, .. } => {
-                    if vid_tx.send(frame.frame).is_err() {
+                cam::CamOutMessage::Frame { frame, typ, .. } => {
+                    if vid_tx.send(frame.frame.clone()).is_err() {
                         error!("Couldn't send the live view frame to the decoder!");
+                    }
+
+                    if let cam::CamFrameType::Photo = typ {
+                        let save_fh = rfd::AsyncFileDialog::new()
+                            .set_file_name("photo.jpg")
+                            .save_file()
+                            .await;
+
+                        if let Some(save_fh) = save_fh
+                            && let Err(e) = std::fs::write(save_fh.path(), &frame.frame) {
+                                error!("An error occured while writing photo (path: {:?}, error: {e})!", save_fh.path());
+                            };
                     }
                 }
                 cam::CamOutMessage::Error(cam_error) => {
@@ -63,27 +75,6 @@ fn main() -> Result<()> {
     rt.spawn(async move {
         cam::cam_worker(cam_in_rx, cam_out_tx).await.unwrap();
     });
-
-    /*
-    tokio::task::spawn(async move {
-        /*
-        let mut cam = hacam_lib_rs::cam::HaCam::new().unwrap();
-
-        cam.initialize_comm().await.unwrap();
-
-        let res = LiveViewResolution::High;
-        cam.start_live_view(res).await.unwrap();
-
-        tokio::time::sleep(Duration::from_millis(1000)).await;
-
-        while let Ok((_, frame)) = cam.get_live_view_frame().await {
-            vid_tx.send(frame).unwrap();
-        }
-        */
-
-        anyhow::Ok(())
-    });
-    */
 
     std::thread::Builder::new()
         .name("frame-decoder-thread".to_string())

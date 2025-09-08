@@ -5,9 +5,9 @@ use eframe::{
 
 use anyhow::Result;
 use bytemuck::{Pod, Zeroable};
-use tokio::sync::mpsc::Sender;
-use std::{mem};
+use std::mem;
 use std::{f32::consts::FRAC_PI_2, sync::mpsc::Receiver};
+use tokio::sync::mpsc::Sender;
 use wgpu::util::DeviceExt;
 
 use crate::cam::{CamFrame, CamInMessage, CamOutMessage};
@@ -29,7 +29,7 @@ pub struct AppState {
     zoom: f32,
     cam_frame_rx: Receiver<CamFrame>,
     placeholder_frame: Option<CamFrame>,
-    cam_in_tx: Sender<CamInMessage>
+    cam_in_tx: Sender<CamInMessage>,
 }
 
 impl AppState {
@@ -38,7 +38,7 @@ impl AppState {
         width: u32,
         height: u32,
         rx: Receiver<CamFrame>,
-        cam_in_tx: Sender<CamInMessage>
+        cam_in_tx: Sender<CamInMessage>,
     ) -> Self {
         let wgpu_render_state = cc.wgpu_render_state.as_ref().unwrap();
 
@@ -151,7 +151,7 @@ impl AppState {
             height,
             cam_frame_rx: rx,
             placeholder_frame: None,
-            cam_in_tx
+            cam_in_tx,
         }
     }
 
@@ -204,43 +204,62 @@ impl eframe::App for AppState {
         ctx.request_repaint();
 
         if self.is_live_view_on {
-            self.cam_in_tx.blocking_send(CamInMessage::GetFrame).unwrap();
+            self.cam_in_tx
+                .blocking_send(CamInMessage::GetFrame)
+                .unwrap();
         }
-        
-        egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal(|ui| {
-                //ui.spacing_mut().item_spacing.x = 0.0;
-                //ui.label("The triangle is being painted using ");
-                //ui.hyperlink_to("WGPU", "https://wgpu.rs");
-                //ui.label(" (Portable Rust graphics API awesomeness)");
-            });
-            ui.label("CTRL+SCROLL to zoom.");
 
+        egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 if ui.button("Open camera").clicked() {
                     self.cam_in_tx.blocking_send(CamInMessage::Init).unwrap();
                 }
 
                 if ui.button("Start live view").clicked() {
-                    self.cam_in_tx.blocking_send(CamInMessage::StartLiveView(hacam_lib_rs::settings::LiveViewResolution::Low)).unwrap();
+                    self.cam_in_tx
+                        .blocking_send(CamInMessage::StartLiveView(
+                            hacam_lib_rs::settings::LiveViewResolution::Low,
+                        ))
+                        .unwrap();
                     self.is_live_view_on = true;
                 }
 
                 if ui.button("Stop live view").clicked() {
-                    self.cam_in_tx.blocking_send(CamInMessage::StopLiveView).unwrap();
+                    self.cam_in_tx
+                        .blocking_send(CamInMessage::StopLiveView)
+                        .unwrap();
                     self.is_live_view_on = false;
                 }
 
+                if ui.button("Take photo").clicked() {
+                    if self.is_live_view_on {
+                        self.cam_in_tx
+                            .blocking_send(CamInMessage::StopLiveView)
+                            .unwrap();
+                        self.is_live_view_on = false;
+                    }
+
+                    self.cam_in_tx
+                        .blocking_send(CamInMessage::TakePhoto {
+                            orientation: hacam_lib_rs::settings::PictureOrientation::Deg0,
+                        })
+                        .unwrap();
+                }
+
                 if ui.button("Power off camera").clicked() {
-                    self.cam_in_tx.blocking_send(CamInMessage::PowerOff).unwrap();
+                    self.cam_in_tx
+                        .blocking_send(CamInMessage::PowerOff)
+                        .unwrap();
                 }
             });
+
+            ui.label("CTRL+SCROLL to zoom.");
 
             ui.vertical_centered_justified(|ui| {
                 egui::Frame::canvas(ui.style()).show(ui, |ui| {
                     self.custom_painting(ui, self.cam_frame_rx.try_recv().ok(), None);
                 });
-            })
+            });
         });
     }
 }

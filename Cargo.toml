@@ -20,6 +20,7 @@ int-enum = "1.2.0"
 yuv = "0.8.6"
 openh264 = "0.8.1"
 minimp4 = "0.1.2"
+rfd = "0.15.4"
 
 [profile.release]
 debug = true
