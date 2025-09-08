@@ -10,11 +10,11 @@ use yuv::{yuv420_to_bgra, YuvPlanarImage, YuvRange, YuvStandardMatrix};
 use hacam_lib_rs::{cam::LiveViewFrame};
 use crate::cam::CamFrame;
 
-pub fn run_cam_lv(vid_rx: Receiver<LiveViewFrame>, frame_tx: SyncSender<CamFrame>) -> Result<()> {
+pub fn run_cam_lv(vid_rx: Receiver<Vec<u8>>, frame_tx: SyncSender<CamFrame>) -> Result<()> {
     let mut decoder = openh264::decoder::Decoder::new()?;
 
     loop {
-        let LiveViewFrame { data: vid, .. } = vid_rx.recv()?;
+        let vid = vid_rx.recv()?;
 
         if vid.is_empty() {
             continue;

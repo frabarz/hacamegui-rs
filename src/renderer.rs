@@ -200,6 +200,8 @@ impl eframe::App for AppState {
         // we can only request a repaint each time a frame is decoded.
         ctx.request_repaint();
 
+        self.cam_in_tx.blocking_send(CamInMessage::GetFrame).unwrap();
+
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
                 //ui.spacing_mut().item_spacing.x = 0.0;
@@ -212,6 +214,14 @@ impl eframe::App for AppState {
             ui.horizontal(|ui| {
                 if ui.button("Open camera").clicked() {
                     self.cam_in_tx.blocking_send(CamInMessage::Init).unwrap();
+                }
+
+                if ui.button("Start live view").clicked() {
+                    self.cam_in_tx.blocking_send(CamInMessage::StartLiveView(hacam_lib_rs::settings::LiveViewResolution::Low)).unwrap();
+                }
+
+                if ui.button("Stop live view").clicked() {
+                    self.cam_in_tx.blocking_send(CamInMessage::StopLiveView).unwrap();
                 }
 
                 if ui.button("Power off camera").clicked() {

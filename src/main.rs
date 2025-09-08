@@ -26,13 +26,39 @@ fn main() -> Result<()> {
         with_padding: false,
     })?;
 
+    // Channel responsible for sending messages to the camera to the async worker.
     let (cam_in_tx, cam_in_rx) = tokio::sync::mpsc::channel::<cam::CamInMessage>(16);
-    let (cam_out_tx, cam_out_rx) = tokio::sync::mpsc::channel::<cam::CamOutMessage>(16);
 
-    let (vid_tx, vid_rx) = std::sync::mpsc::sync_channel::<hacam_lib_rs::cam::LiveViewFrame>(3);
+    // Channel responsible for sending from to the camera to the async worker.
+    let (cam_out_tx, mut cam_out_rx) = tokio::sync::mpsc::channel::<cam::CamOutMessage>(16);
+
+    // Channel responsible for raw, undecoded frames originating from the camera to the decoder.
+    let (vid_tx, vid_rx) = std::sync::mpsc::sync_channel::<Vec<u8>>(3);
+
+    // Channel responsible for sending messages from the decoder to the renderer..
     let (frame_tx, frame_rx) = std::sync::mpsc::sync_channel::<crate::cam::CamFrame>(3);
 
     let rt = tokio::runtime::Runtime::new()?;
+
+    rt.spawn(async move {
+        while let Some(msg) = cam_out_rx.recv().await {
+            match msg {
+                cam::CamOutMessage::Info(i) => info!("Received info from cam: {i}"),
+                cam::CamOutMessage::Frame { frame, .. } => {
+                    if vid_tx.send(frame.frame).is_err() {
+                        error!("Couldn't send the live view frame to the decoder!");
+                    }
+                }
+                cam::CamOutMessage::Error(cam_error) => {
+                    error!("An error in camera occured! {cam_error:#?}");
+                },
+                cam::CamOutMessage::Setting { typ, value } => {
+                    info!("The value of setting {typ:?} is {value}");
+                },
+                
+            }
+        }
+    });
 
     rt.spawn(async move {
         cam::cam_worker(cam_in_rx, cam_out_tx).await.unwrap();

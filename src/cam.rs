@@ -3,8 +3,8 @@ use std::cell::{Cell, RefCell};
 use anyhow::Result;
 use hacam_lib_rs::{
     cam::{HaCam, ThermalStatus},
-    settings::{self, LiveViewResolution, PhotoResolution, PictureOrientation, Resolution},
-    util::CamUtil,
+    settings::{self, LiveViewResolution, PhotoResolution, PictureOrientation, Resolution, VideoResolution},
+    util::CamUtil, CamError,
 };
 use tokio::sync::{
     OnceCell,
@@ -46,7 +46,7 @@ pub enum CamInMessage {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum CamOutMessage {
     Info(String),
     Frame {
@@ -58,7 +58,7 @@ pub enum CamOutMessage {
         typ: settings::SettingType,
         value: u8,
     },
-    Error(String),
+    Error(std::result::Result<CamError, String>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -75,18 +75,26 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
     let was_lv_initialized = OnceCell::new();
 
     while let Some(in_msg) = rx.recv().await {
-        if let CamInMessage::Init = in_msg {
-            if cam.set(HaCam::new()?).is_err() {
-                tx.send(CamOutMessage::Error(
+        if let CamInMessage::Init = in_msg {            
+            let cam_inst = match HaCam::new() {
+                Ok(cam_inst) => cam_inst,
+                Err(e) => {
+                    tx.send(CamOutMessage::Error(Ok(e))).await?;
+                    continue;
+                },
+            };
+
+            if cam.set(cam_inst).is_err() {
+                tx.send(CamOutMessage::Error(Err(
                     "Camera cannot be initialized twice!".to_owned(),
-                ))
+                )))
                 .await?;
             }
 
             let Some(cam) = cam.get_mut() else {
-                tx.send(CamOutMessage::Error(
-                    "Camera initialization error!".to_owned(),
-                ))
+                tx.send(CamOutMessage::Error(Err(
+                    "Camera is not initialized!".to_owned(),
+                )))
                 .await?;
                 continue;
             };
@@ -97,9 +105,9 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
         }
 
         let Some(cam) = cam.get_mut() else {
-            tx.send(CamOutMessage::Error(
+            tx.send(CamOutMessage::Error(Err(
                 "Camera initialization error!".to_owned(),
-            ))
+            )))
             .await?;
             continue;
         };
@@ -108,12 +116,22 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
             CamInMessage::StartLiveView(live_view_resolution) => {
                 cam.start_live_view(live_view_resolution).await?;
                 lv_res.replace(live_view_resolution);
-                was_lv_initialized.set(())?;
+                let _ = was_lv_initialized.set(());
             }
             CamInMessage::StopLiveView => {
                 cam.stop_live_view().await?;
             }
             CamInMessage::StartRecording => {
+                let video_res = VideoResolution::try_from(cam.read_setting(settings::SettingType::VideoResolution).await? as i8).unwrap();
+
+                let as_lv_res = match video_res {
+                    VideoResolution::High => LiveViewResolution::High,
+                    VideoResolution::Low => LiveViewResolution::Low,
+                    VideoResolution::Unknown => LiveViewResolution::Low,
+                };
+
+                lv_res.replace(as_lv_res);
+                
                 cam.start_recording().await?;
             }
             CamInMessage::StopRecording => {
