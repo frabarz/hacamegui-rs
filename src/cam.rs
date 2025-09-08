@@ -2,13 +2,19 @@ use std::cell::{Cell, RefCell};
 
 use anyhow::Result;
 use hacam_lib_rs::{
+    CamError,
     cam::{HaCam, ThermalStatus},
-    settings::{self, LiveViewResolution, PhotoResolution, PictureOrientation, Resolution, VideoResolution},
-    util::CamUtil, CamError,
+    settings::{
+        self, LiveViewResolution, PhotoResolution, PictureOrientation, Resolution, VideoResolution,
+    },
+    util::CamUtil,
 };
-use tokio::sync::{
-    OnceCell,
-    mpsc::{Receiver, Sender},
+use tokio::{
+    runtime::Handle,
+    sync::{
+        OnceCell,
+        mpsc::{Receiver, Sender},
+    },
 };
 
 #[derive(Clone, Debug)]
@@ -49,6 +55,8 @@ pub enum CamInMessage {
 #[derive(Debug)]
 pub enum CamOutMessage {
     Info(String),
+    StartRecordingStatus(bool, VideoResolution),
+    StopRecordingStatus(bool),
     Frame {
         frame: CamFrame,
         typ: CamFrameType,
@@ -64,7 +72,6 @@ pub enum CamOutMessage {
 #[derive(Debug, Clone, Copy)]
 pub enum CamFrameType {
     LiveView,
-    Video,
     Photo,
     Thumbnail,
 }
@@ -75,13 +82,13 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
     let was_lv_initialized = OnceCell::new();
 
     while let Some(in_msg) = rx.recv().await {
-        if let CamInMessage::Init = in_msg {            
+        if let CamInMessage::Init = in_msg {
             let cam_inst = match HaCam::new() {
                 Ok(cam_inst) => cam_inst,
                 Err(e) => {
                     tx.send(CamOutMessage::Error(Ok(e))).await?;
                     continue;
-                },
+                }
             };
 
             if cam.set(cam_inst).is_err() {
@@ -93,7 +100,7 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
 
             let Some(cam) = cam.get_mut() else {
                 tx.send(CamOutMessage::Error(Err(
-                    "Camera is not initialized!".to_owned(),
+                    "Camera is not initialized!".to_owned()
                 )))
                 .await?;
                 continue;
@@ -106,7 +113,7 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
 
         let Some(cam) = cam.get_mut() else {
             tx.send(CamOutMessage::Error(Err(
-                "Camera initialization error!".to_owned(),
+                "Camera initialization error!".to_owned()
             )))
             .await?;
             continue;
@@ -122,7 +129,11 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
                 cam.stop_live_view().await?;
             }
             CamInMessage::StartRecording => {
-                let video_res = VideoResolution::try_from(cam.read_setting(settings::SettingType::VideoResolution).await? as i8).unwrap();
+                let video_res = VideoResolution::try_from(
+                    cam.read_setting(settings::SettingType::VideoResolution)
+                        .await? as i8,
+                )
+                .unwrap();
 
                 let as_lv_res = match video_res {
                     VideoResolution::High => LiveViewResolution::High,
@@ -131,31 +142,45 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
                 };
 
                 lv_res.replace(as_lv_res);
-                
+
                 cam.start_recording().await?;
+
+                let rec_req = cam.check_start_recording_request().await?;
+                tx.send(CamOutMessage::StartRecordingStatus(rec_req, video_res)).await?;
             }
             CamInMessage::StopRecording => {
-                cam.start_recording().await?;
+                cam.stop_recording().await?;
+
+                let stop_rec_req = cam.check_start_recording_request().await?;
+                tx.send(CamOutMessage::StopRecordingStatus(stop_rec_req)).await?;
             }
             CamInMessage::TakePhoto { orientation } => {
                 let on_thumbnail = |thumb| {
-                    tx.blocking_send(CamOutMessage::Frame {
-                        frame: CamFrame {
-                            frame: thumb,
-                            width: 272,
-                            height: 272,
-                        },
-                        typ: CamFrameType::Thumbnail,
-                        thermal_status: None,
-                    })
-                    .unwrap();
+                    info!("Received thumbnail!");
+
+                    Handle::current().spawn({
+                        let tx = tx.clone();
+
+                        async move {
+                            tx.send(CamOutMessage::Frame {
+                                frame: CamFrame {
+                                    frame: thumb,
+                                    width: 272,
+                                    height: 272,
+                                },
+                                typ: CamFrameType::Thumbnail,
+                                thermal_status: None,
+                            })
+                            .await
+                            .unwrap();
+                        }
+                    });
                 };
 
                 let photo_res = PhotoResolution::try_from(
                     cam.read_setting(settings::SettingType::PhotoResolution)
                         .await? as i8,
-                )
-                .expect("Invalid setting format received!");
+                ).unwrap();
 
                 let photo = cam
                     .take_picture_and_get(
@@ -194,7 +219,7 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
                 .await?;
             }
 
-            CamInMessage::PowerOff => { 
+            CamInMessage::PowerOff => {
                 cam.power_off().await?;
             }
 

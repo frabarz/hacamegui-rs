@@ -246,6 +246,20 @@ impl eframe::App for AppState {
                         .unwrap();
                 }
 
+                if ui.button("Start recording").clicked() {
+                    self.cam_in_tx
+                        .blocking_send(CamInMessage::StartRecording)
+                        .unwrap();
+                    self.is_live_view_on = true;
+                }
+
+                if ui.button("Stop recording").clicked() {
+                    self.cam_in_tx
+                        .blocking_send(CamInMessage::StopRecording)
+                        .unwrap();
+                    self.is_live_view_on = false;
+                }
+
                 if ui.button("Power off camera").clicked() {
                     self.cam_in_tx
                         .blocking_send(CamInMessage::PowerOff)
