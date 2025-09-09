@@ -271,13 +271,13 @@ impl eframe::App for AppState {
                 }
             });
 
-            ui.label("CTRL+SCROLL to zoom.");
-
             ui.vertical_centered_justified(|ui| {
                 egui::Frame::canvas(ui.style()).show(ui, |ui| {
                     self.custom_painting(ui, self.cam_frame_rx.try_recv().ok(), None);
                 });
             });
+
+            ui.label("CTRL+SCROLL to zoom.");
         });
     }
 }

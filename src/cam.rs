@@ -129,14 +129,23 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
 
         match in_msg {
             CamInMessage::StartLiveView(live_view_resolution) => {
+                info!("Requested to start live view! Resolution: {live_view_resolution:#?}");
                 cam.start_live_view(live_view_resolution).await?;
                 lv_res.replace(live_view_resolution);
                 let _ = was_lv_initialized.set(());
             }
             CamInMessage::StopLiveView => {
+                info!("Requested to stop live view!");
                 cam.stop_live_view().await?;
             }
             CamInMessage::StartRecording => {
+                info!("Requested to start recording!");
+
+                if cam.check_live_view_status().await? {
+                    info!("Live view is on, requesting stopping!");
+                    cam.stop_live_view().await?;
+                }
+
                 let video_res = VideoResolution::try_from(
                     cam.read_setting(settings::SettingType::VideoResolution)
                         .await? as i8,
@@ -158,6 +167,7 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
                     .await?;
             }
             CamInMessage::StopRecording => {
+                info!("Requested to stop recording!");
                 cam.stop_recording().await?;
 
                 let stop_rec_req = cam.check_start_recording_request().await?;
@@ -165,6 +175,7 @@ pub async fn cam_worker(mut rx: Receiver<CamInMessage>, tx: Sender<CamOutMessage
                     .await?;
             }
             CamInMessage::TakePhoto { orientation } => {
+                info!("Requested to take photo! Orientation: {orientation:#?}");
                 let on_thumbnail = |thumb| {
                     info!("Received thumbnail!");
 

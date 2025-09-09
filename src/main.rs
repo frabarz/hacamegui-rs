@@ -55,7 +55,7 @@ fn main() -> Result<()> {
 
             while let Some(msg) = cam_out_rx.recv().await {
                 if (cam_out_rx.capacity() as f32 / cam_out_rx.max_capacity() as f32) < 0.5 {
-                    warn!("cam_out_rx backpressure too high (50%)!");
+                    warn!("cam_out_rx backpressure too high (capacity: {}%)!", 100.0 * cam_out_rx.capacity() as f32 / cam_out_rx.max_capacity() as f32);
                 }
 
                 match msg {
@@ -74,6 +74,7 @@ fn main() -> Result<()> {
                         }
 
                         if let cam::CamFrameType::Photo = typ {
+                            info!("Received a photo frame!");
                             let save_fh = rfd::AsyncFileDialog::new()
                                 .set_title("Pick a photo save path")
                                 .set_file_name("photo.jpg")
@@ -93,7 +94,7 @@ fn main() -> Result<()> {
                                 let mut rgb_buf: Vec<u8> = vec![0; (decoder.total_bytes()) as usize];
 
                                 let (w, h) = decoder.dimensions();
-                                
+
                                 decoder.read_image(&mut rgb_buf).unwrap();
 
                                 let mut bgra_buf: Vec<u8> = vec![0; (w * h) as usize * 4];
@@ -129,16 +130,15 @@ fn main() -> Result<()> {
                             let muxer_rx = muxer_rx.clone();
                             move || {
                                 if let Ok(mut muxer_rx) = muxer_rx.lock() {
-                                    let muxer_rx =
-                                        muxer_rx.as_mut().expect("Muxer must be initialized!");
-
                                     util::save_mp4(
-                                        muxer_rx,
+                                        muxer_rx.as_mut().expect("Muxer must be initialized!"),
                                         save_fh.path().to_path_buf(),
                                         res.w() as i32,
                                         res.h() as i32,
                                     )
                                     .unwrap();
+
+                                    *muxer_rx = None;
                                 }
                             }
                         });
@@ -149,6 +149,8 @@ fn main() -> Result<()> {
                         {
                             error!("Couldn't end recording!");
                         };
+
+                        muxer_tx = None;
                     }
                     cam::CamOutMessage::Error(cam_error) => {
                         error!("An error in camera occured! {cam_error:#?}");
