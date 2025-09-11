@@ -22,6 +22,9 @@ openh264 = "0.8.1"
 minimp4 = "0.1.2"
 rfd = "0.15.4"
 image = { version = "0.25.8", features = ["jpeg"] }
+mp4-atom = "0.8.1"
+uuid = { version = "1.18.1", features = ["v4"] }
+indoc = "2.0.6"
 
 [profile.release]
 debug = true

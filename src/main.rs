@@ -130,13 +130,15 @@ fn main() -> Result<()> {
                             let muxer_rx = muxer_rx.clone();
                             move || {
                                 if let Ok(mut muxer_rx) = muxer_rx.lock() {
-                                    util::save_mp4(
+                                    util::save_mp4_with_spherical(
                                         muxer_rx.as_mut().expect("Muxer must be initialized!"),
                                         save_fh.path().to_path_buf(),
                                         res.w() as i32,
                                         res.h() as i32,
                                     )
                                     .unwrap();
+
+                                    info!("Finished saving MP4 to {save_fh:?}!");
 
                                     *muxer_rx = None;
                                 }
