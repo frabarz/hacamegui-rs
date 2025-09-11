@@ -1,4 +1,4 @@
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
 
 use anyhow::Result;
 use hacam_lib_rs::{
@@ -16,6 +16,16 @@ use tokio::{
         mpsc::{Receiver, Sender},
     },
 };
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CamState {
+    #[default]
+    None = 0,
+    Initialized = 1,
+    LiveViewStreaming,
+    TakingPicture,
+    Recording
+}
 
 #[derive(Clone, Debug)]
 pub struct CamFrame {

@@ -1,5 +1,5 @@
 use eframe::{
-    egui,
+    egui::{self, Button},
     egui_wgpu::{self, RenderState},
 };
 
@@ -10,7 +10,7 @@ use std::{f32::consts::FRAC_PI_2, sync::mpsc::Receiver};
 use tokio::sync::mpsc::Sender;
 use wgpu::util::DeviceExt;
 
-use crate::cam::{CamFrame, CamInMessage, CamOutMessage};
+use crate::cam::{CamFrame, CamInMessage, CamState};
 
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
@@ -20,7 +20,7 @@ struct CameraUniform {
 }
 
 pub struct AppState {
-    is_live_view_on: bool,
+    cam_state: CamState,
 
     width: u32,
     height: u32,
@@ -143,7 +143,7 @@ impl AppState {
             });
 
         Self {
-            is_live_view_on: false,
+            cam_state: CamState::None,
             yaw: 0.0,
             pitch: 0.0,
             zoom: 1.0,
@@ -203,7 +203,7 @@ impl eframe::App for AppState {
         // we can only request a repaint each time a frame is decoded.
         ctx.request_repaint();
 
-        if self.is_live_view_on {
+        if self.cam_state == CamState::LiveViewStreaming || self.cam_state == CamState::Recording {
             self.cam_in_tx
                 .blocking_send(CamInMessage::GetFrame)
                 .unwrap();
@@ -215,32 +215,66 @@ impl eframe::App for AppState {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.horizontal(|ui| {
-                if ui.button("Open camera").clicked() {
+                if ui
+                    .button(format!(
+                        "{}pen camera",
+                        if self.cam_state == CamState::None {
+                            "O"
+                        } else {
+                            "Re-o"
+                        }
+                    ))
+                    .clicked()
+                {
                     self.cam_in_tx.blocking_send(CamInMessage::Init).unwrap();
+                    self.cam_state = CamState::Initialized;
                 }
 
-                if ui.button("Start live view").clicked() {
+                if ui
+                    .add_enabled(
+                        self.cam_state != CamState::None
+                            && self.cam_state != CamState::LiveViewStreaming,
+                        Button::new("Start live view"),
+                    )
+                    .clicked()
+                {
                     self.cam_in_tx
                         .blocking_send(CamInMessage::StartLiveView(
                             hacam_lib_rs::settings::LiveViewResolution::Low,
                         ))
                         .unwrap();
-                    self.is_live_view_on = true;
+
+                    self.cam_state = CamState::LiveViewStreaming;
                 }
 
-                if ui.button("Stop live view").clicked() {
+                if ui
+                    .add_enabled(
+                        self.cam_state == CamState::LiveViewStreaming,
+                        Button::new("Stop live view"),
+                    )
+                    .clicked()
+                {
                     self.cam_in_tx
                         .blocking_send(CamInMessage::StopLiveView)
                         .unwrap();
-                    self.is_live_view_on = false;
+
+                    self.cam_state = CamState::Initialized;
                 }
 
-                if ui.button("Take photo").clicked() {
-                    if self.is_live_view_on {
+                if ui
+                    .add_enabled(self.cam_state != CamState::None, Button::new("Take photo"))
+                    .clicked()
+                {
+                    if self.cam_state == CamState::LiveViewStreaming {
                         self.cam_in_tx
                             .blocking_send(CamInMessage::StopLiveView)
                             .unwrap();
-                        self.is_live_view_on = false;
+                    }
+
+                    if self.cam_state == CamState::Recording {
+                        self.cam_in_tx
+                            .blocking_send(CamInMessage::StopRecording)
+                            .unwrap();
                     }
 
                     self.cam_in_tx
@@ -248,26 +282,56 @@ impl eframe::App for AppState {
                             orientation: hacam_lib_rs::settings::PictureOrientation::Deg0,
                         })
                         .unwrap();
+
+                    self.cam_state = CamState::TakingPicture;
                 }
 
-                if ui.button("Start recording").clicked() {
+                if ui
+                    .add_enabled(
+                        self.cam_state != CamState::None && self.cam_state != CamState::Recording,
+                        Button::new("Start recording"),
+                    )
+                    .clicked()
+                {
+                    if self.cam_state == CamState::LiveViewStreaming {
+                        self.cam_in_tx
+                            .blocking_send(CamInMessage::StopLiveView)
+                            .unwrap();
+                    }
+
                     self.cam_in_tx
                         .blocking_send(CamInMessage::StartRecording)
                         .unwrap();
-                    self.is_live_view_on = true;
+
+                    self.cam_state = CamState::Recording;
                 }
 
-                if ui.button("Stop recording").clicked() {
+                if ui
+                    .add_enabled(
+                        self.cam_state == CamState::Recording,
+                        Button::new("Stop recording"),
+                    )
+                    .clicked()
+                {
                     self.cam_in_tx
                         .blocking_send(CamInMessage::StopRecording)
                         .unwrap();
-                    self.is_live_view_on = false;
+
+                    self.cam_state = CamState::Initialized;
                 }
 
-                if ui.button("Power off camera").clicked() {
+                if ui
+                    .add_enabled(
+                        self.cam_state != CamState::None,
+                        Button::new("Power off camera"),
+                    )
+                    .clicked()
+                {
                     self.cam_in_tx
                         .blocking_send(CamInMessage::PowerOff)
                         .unwrap();
+
+                    self.cam_state = CamState::None;
                 }
             });
 
